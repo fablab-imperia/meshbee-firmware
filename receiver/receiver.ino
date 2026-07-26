@@ -1,8 +1,5 @@
 
 // Wemos Lolin 32 lite
-test
-//https://github.com/tzapu/WiFiManager/blob/master/examples/Parameters/SPIFFS/AutoConnectWithFSParameters/AutoConnectWithFSParameters.ino
-//https://github.com/pangcrd/LVGL_Bassic-tutorial/blob/main/ESP32_UART_JSON/Source%20code/Slave/main.cpp
 
 #include <WiFiManager.h> 
 #include <Arduino.h>
@@ -12,7 +9,7 @@ test
 #include <AsyncTCP.h>
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
-
+#include <WebSerial.h>
 
 WiFiClient  espClient;
 AsyncWebServer server(80);
@@ -264,8 +261,6 @@ void RecvJsonData(){
 //*******************
 
 void setup(){
-//  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
-  // it is a good practice to make sure your code sets wifi mode how you want it.
 
   // Serial Monitor
   Serial.begin(115200);
@@ -275,75 +270,47 @@ void setup(){
   // Start Serial 2 with the defined RX and TX pins and a baud rate of 115200
   meshSerial.begin(MESH_BAUD, SERIAL_8N1, RXD2, TXD2);
   Serial.println("Serial 2 started at 115200 baud rate");
-  
+
+  WiFi.mode(WIFI_AP_STA); 
+  // explicitly set mode, esp defaults to STA+AP
+  // it is a good practice to make sure your code sets wifi mode how you want it.
+  // permanent AP
+  WiFi.softAP(apSSID, apPassword);
+  Serial.println("Access Point started");
+  Serial.print("IP: ");
+  Serial.println(WiFi.softAPIP());
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    request->send(200, "text/plain", "Hi! This is MeshBee. You can access webserial interface at http://" + WiFi.softAPIP().toString() + "/webserial and over the air firmware update at http://" + WiFi.softAPIP().toString() + "/update");
+  });
+
+  // WebSerial is accessible at "<IP Address>/webserial" in browser
+  WebSerial.begin(&server);
+
+  /* WebSerial attach Message Callback */
+  WebSerial.onMessage([&](uint8_t *data, size_t len) {
+    Serial.printf("Received %u bytes from WebSerial: ", len);
+    Serial.write(data, len);
+    Serial.println();
+    WebSerial.println("Received Data...");
+    String d = "";
+    for(size_t i=0; i < len; i++){
+      d += char(data[i]);
+    }
+    WebSerial.println(d);
+
+    if ( d == "list" ) {                                                   // command:  list
+      WebSerial.println("list all data"); 
+    } else {
+      WebSerial.println("unknown command");
+    }
+  });
+
   WiFiManager wifiManager;
   wifiManager.setConfigPortalTimeout(120); // auto close configportal after n seconds
 
-
-/*
- 
-Add WIFI AP  
- 
-#include <WiFi.h>
-#include <WiFiManager.h>
-
-WiFiManager wm;
-
-// Secondary AP Credentials
-const char* extra_ap_ssid = "ESP32_Local_Hotspot";
-const char* extra_ap_pass = "12345678";
-
-void setup() {
-  Serial.begin(115200);
-
-  // Set dual mode (Station + Access Point)
-  WiFi.mode(WIFI_AP_STA);
-
-  // Optional: customize config portal AP IP if needed
-  // wm.setAPStaticIPConfig(IPAddress(192,168,8,1), IPAddress(192,168,8,1), IPAddress(255,255,255,0));
-
-  // Try connecting to saved router credentials, or open portal
-  if (!wm.autoConnect("ESP32_Setup_Portal", "password")) {
-    Serial.println("Failed to connect or hit timeout");
-    // ESP.restart(); // Uncomment to reboot on failure
-  } else {
-    Serial.println("Connected to router successfully!");
-  }
-
-  // Start your additional custom Access Point concurrently
-  bool apSuccess = WiFi.softAP(extra_ap_ssid, extra_ap_pass);
-  if (apSuccess) {
-    Serial.print("Additional AP Started: ");
-    Serial.println(extra_ap_ssid);
-    Serial.print("AP IP Address: ");
-    Serial.println(WiFi.softAPIP());
-  } else {
-    Serial.println("Failed to start additional AP");
-  }
-}
-
-void loop() {
-  // Your background code here
-}
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-  
     // reset settings - wipe stored credentials for testing
     // these are stored by the esp library
-    //wm.resetSettings();
+    // wm.resetSettings();
 
     // Automatically connect using saved credentials,
     // if connection fails, it starts an access point with the specified name ( "AutoConnectAP"),
@@ -366,8 +333,6 @@ void loop() {
   
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
-
-
 
   //start Wifi AP, Webserial, OTA-update    
   // Start ElegantOTA
@@ -407,5 +372,16 @@ void loop() {
     }
     lastTime = millis();
   }
+
+/*
+  bool otaEnabled = false;
+  if (!otaEnabled) {
+    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) { request->send(403, "text/plain", "OTA disabled");});
+  } else {
+    server.on("/update", HTTP_GET, [](AsyncWebServerRequest *request) { ElegantOTA.handle(request);});
+  }
+*/
+
   ElegantOTA.loop();
+  WebSerial.loop();
 }
