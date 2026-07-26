@@ -10,9 +10,26 @@
 #include <ESPAsyncWebServer.h>
 #include <ElegantOTA.h>
 #include <WebSerial.h>
+#include <nvs_flash.h>              // non volatile storage library
+#include <Preferences.h>
 
 WiFiClient  espClient;
 AsyncWebServer server(80);
+
+Preferences prefs;                // to save the node ID
+JsonDocument JSONdata;            //create json document
+
+//**************************
+//****  WiFi manager     ***
+//**************************
+
+// this function is called, when the user clicks on "save"
+void saveConfigCallback() {
+  Serial.println("New WLAN-data stored!");
+  Serial.println("Reset in 1 second");
+  delay(1000);
+  ESP.restart();
+}
 
 
 //*******************
@@ -235,7 +252,7 @@ void RecvJsonData(){
       SendData["alarm"] =       alarmString;     // "alarm": "1"                           18 characters  
       serializeJson(SendData, output);           // add mydata to output send to serial   123 characters
 
-      // spedire solo un dei 4 messagi spedito con la distanza di 1 secondo con id nodo e id sensore diversi
+      // send only one of 4 messages with distance of 1 second with node id and id sensors
       Serial.println(millis() - rec_timer);
       if ((millis() - rec_timer >= 60000) || ((String(node) != prevNode) || (String(sensString) != prevSensor)) ){
         rec_timer = millis();
@@ -261,6 +278,8 @@ void RecvJsonData(){
 //*******************
 
 void setup(){
+
+String nodeID;
 
   // Serial Monitor
   Serial.begin(115200);
@@ -300,6 +319,47 @@ void setup(){
 
     if ( d == "list" ) {                                                   // command:  list
       WebSerial.println("list all data"); 
+      // open permanent memory
+      prefs.begin("nodeID", false);
+      // read stored values
+      String nodeID = prefs.getString("nodeID", "");
+      WebSerial.print("stored node ID: ");
+      WebSerial.println(nodeID);
+      // close permanent memory
+      prefs.end();
+
+    } else if ( d == "test") {                                             // send test data
+      WebSerial.println ("send test data to backend");
+
+    } else if ( d == "reset") {                                            // reset
+      WebSerial.println ("ESP32 restart in 5 seconds");
+      delay(5000);
+      ESP.restart();
+
+    } else if ( d == "erase") {                                            // erase all permanent data
+      Serial.println ("erase all permanent stored data, also wifi access");
+      nvs_flash_erase(); // erase the NVS partition and...
+      nvs_flash_init(); // initialize the NVS partition.
+      WebSerial.println ("ESP32 restart in 5 seconds");
+      delay(5000);
+      ESP.restart();
+
+    } else if ( d == "ver") {                                              // shows software version
+      WebSerial.print ("software version: ");
+      WebSerial.println (SOFTWARE_VERSION);
+
+    } else if ( d == "example") {                                          // example node ID
+      WebSerial.println ("{\"nodeID\":\"388D\"}");
+
+    } else if (!deserializeJson(JSONdata, d)) {                            // save data for sensors or sleep time
+      if (JSONdata["nodeID"] != nullptr){
+        String nodeID = JSONdata["nodeID"];
+        WebSerial.print ("nodeID: "); WebSerial.println(nodeID);
+      
+        prefs.begin("nodeID", false);
+        prefs.putString("nodeID", nodeID);                                 // store node ID permanently
+        prefs.end();
+      }
     } else {
       WebSerial.println("unknown command");
     }
@@ -317,9 +377,11 @@ void setup(){
     // if empty will auto generate SSID, if password is blank it will be anonymous AP (wm.autoConnect())
     // then goes into a blocking loop awaiting configuration and will return success result
 
+  // register callback
+  wifiManager.setSaveConfigCallback(saveConfigCallback);
+
   bool res;
   res = wifiManager.autoConnect(ssid);
-//    res = wm.autoConnect("AutoConnectAP","password"); // password protected ap
   if(!res) {
     Serial.println("Failed to connect or hit timeout");
     // ESP.restart();
@@ -330,7 +392,7 @@ void setup(){
     Serial.print("IP address: ");
     Serial.println(WiFi.localIP());
   }
-  
+
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
@@ -343,6 +405,14 @@ void setup(){
 
   // Start server
   server.begin();
+  // open permanent memory
+  prefs.begin("nodeID", false);
+  // read stored values
+  nodeID = prefs.getString("nodeID", "");
+  Serial.print("stored node ID: ");
+  Serial.println(nodeID);
+  // close permanent memory
+  prefs.end();
 }
 
 
