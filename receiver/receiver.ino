@@ -1,22 +1,56 @@
-// Board: ESP32 ver.: 1.0.6 !!!
-// Wemos Lolin 32 lite
 
+// Wemos Lolin 32 lite
+test
 //https://github.com/tzapu/WiFiManager/blob/master/examples/Parameters/SPIFFS/AutoConnectWithFSParameters/AutoConnectWithFSParameters.ino
 //https://github.com/pangcrd/LVGL_Bassic-tutorial/blob/main/ESP32_UART_JSON/Source%20code/Slave/main.cpp
-
-//#define WILLY
 
 #include <WiFiManager.h> 
 #include <Arduino.h>
 #include "ArduinoJson.h"
 #include <PubSubClient.h>
 #include "credentials.h"
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <ElegantOTA.h>
 
-//const char* ssid = "xxx";   // your network SSID (name) 
-//const char* password = "xxx";   // your network password
 
 WiFiClient  espClient;
+AsyncWebServer server(80);
 
+
+//*******************
+//****    OTA     ***
+//*******************
+
+unsigned long ota_progress_millis = 0;
+
+void onOTAStart() {
+  // Log when OTA has started
+  Serial.println("OTA update started!");
+  // <Add your own code here>
+}
+
+void onOTAProgress(size_t current, size_t final) {
+  // Log every 1 second
+  if (millis() - ota_progress_millis > 1000) {
+    ota_progress_millis = millis();
+    Serial.printf("OTA Progress Current: %u bytes, Final: %u bytes\n", current, final);
+  }
+}
+
+void onOTAEnd(bool success) {
+  // Log when OTA has finished
+  if (success) {
+    Serial.println("OTA update finished successfully!");
+  } else {
+    Serial.println("There was an error during OTA update!");
+  }
+  // <Add your own code here>
+}
+
+//*******************
+//****    MQTT    ***
+//*******************
 
 PubSubClient client(espClient);
 long lastMsg = 0;
@@ -51,7 +85,8 @@ void callback(char* topic, byte* message, unsigned int length) {
     }
   }
 }
-void reconnect() {
+
+bool reconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
@@ -60,6 +95,7 @@ void reconnect() {
       Serial.println("connected");
       // Subscribe
       client.subscribe("esp32/output");
+      return true;
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -68,7 +104,13 @@ void reconnect() {
       delay(5000);
     }
   }
+  return false;
 }
+
+
+//*******************
+//****    ???     ***
+//*******************
 
 /** Create struct for data packet */
 typedef struct Data{
@@ -76,6 +118,7 @@ typedef struct Data{
   float   weight;
   float   humidity;
   float   temperature;
+  boolean alarm;
 } Data;
 
 Data myValues;
@@ -100,6 +143,10 @@ String receivedMessage = "";  // Variable to store the complete message
 unsigned long lastTime = 0;
 unsigned long timerDelay = 30000;
 
+
+//*******************
+//****   JSON     ***
+//*******************
 
 
 //** Receive JSON and parse from Master 
@@ -174,19 +221,32 @@ void RecvJsonData(){
       char humString[8];
       dtostrf(myValues.humidity, 1, 2, humString);
     
+      myValues.alarm = RecvData["alarm"];
+      Serial.print ("alarm: "); Serial.println(myValues.alarm);
+      // set the fields with the values
+      char alarmString[8];
+      dtostrf(myValues.alarm, 1, 0, alarmString);
+    
 
-      char output[100];
-      SendData["id_nodo"] =     node;            // {"id_nodo": "fcf1",                    20 Zeichen
-      SendData["id_sensore"] =  sensString;      // "id_sensore": "1",                     18 Zeichen                    
-      SendData["temperatura"] = tempString;      // "temperatura": 20.0,                   20 Zeichen
-      SendData["umidita"] =     humString;       // "umidita": 55.0,                       16 Zeichen
-      SendData["peso"] =        weighString;     // "peso": 70.0}                          13 Zeichen  
-      serializeJson(SendData, output);           // add mydata to output send to serial    87 Zeichen
+      char output[130];
+      SendData["id_nodo"] =     node;            // "id_nodo": "fcf1",                     20 characters
+      SendData["id_sensore"] =  sensString;      // "id_sensore": "1",                     18 characters                    
+      SendData["temperatura"] = tempString;      // "temperatura": 20.0,                   20 characters
+      SendData["umidita"] =     humString;       // "umidita": 55.0,                       16 characters
+      SendData["peso"] =        weighString;     // "peso": 70.0,                          13 characters 
+      SendData["receiver"] =    RECEIVER_NODE;   // "receiver": "E332"                     20 characters  
+      SendData["alarm"] =       alarmString;     // "alarm": "1"                           18 characters  
+      serializeJson(SendData, output);           // add mydata to output send to serial   123 characters
 
       // spedire solo un dei 4 messagi spedito con la distanza di 1 secondo con id nodo e id sensore diversi
       Serial.println(millis() - rec_timer);
       if ((millis() - rec_timer >= 60000) || ((String(node) != prevNode) || (String(sensString) != prevSensor)) ){
         rec_timer = millis();
+
+        if (!client.connected()) {
+          reconnect();
+        }
+        
         client.publish(theme, output);
         updated=true;
         prevNode   = String(node);
@@ -198,6 +258,11 @@ void RecvJsonData(){
   }  
 }
 
+
+//*******************
+//****   SETUP    ***
+//*******************
+
 void setup(){
 //  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP
   // it is a good practice to make sure your code sets wifi mode how you want it.
@@ -205,13 +270,76 @@ void setup(){
   // Serial Monitor
   Serial.begin(115200);
   delay(1000);
-    
+  Serial.print("Software Version: ");
+  Serial.println(SOFTWARE_VERSION);
   // Start Serial 2 with the defined RX and TX pins and a baud rate of 115200
   meshSerial.begin(MESH_BAUD, SERIAL_8N1, RXD2, TXD2);
   Serial.println("Serial 2 started at 115200 baud rate");
   
   WiFiManager wifiManager;
   wifiManager.setConfigPortalTimeout(120); // auto close configportal after n seconds
+
+
+/*
+ 
+Add WIFI AP  
+ 
+#include <WiFi.h>
+#include <WiFiManager.h>
+
+WiFiManager wm;
+
+// Secondary AP Credentials
+const char* extra_ap_ssid = "ESP32_Local_Hotspot";
+const char* extra_ap_pass = "12345678";
+
+void setup() {
+  Serial.begin(115200);
+
+  // Set dual mode (Station + Access Point)
+  WiFi.mode(WIFI_AP_STA);
+
+  // Optional: customize config portal AP IP if needed
+  // wm.setAPStaticIPConfig(IPAddress(192,168,8,1), IPAddress(192,168,8,1), IPAddress(255,255,255,0));
+
+  // Try connecting to saved router credentials, or open portal
+  if (!wm.autoConnect("ESP32_Setup_Portal", "password")) {
+    Serial.println("Failed to connect or hit timeout");
+    // ESP.restart(); // Uncomment to reboot on failure
+  } else {
+    Serial.println("Connected to router successfully!");
+  }
+
+  // Start your additional custom Access Point concurrently
+  bool apSuccess = WiFi.softAP(extra_ap_ssid, extra_ap_pass);
+  if (apSuccess) {
+    Serial.print("Additional AP Started: ");
+    Serial.println(extra_ap_ssid);
+    Serial.print("AP IP Address: ");
+    Serial.println(WiFi.softAPIP());
+  } else {
+    Serial.println("Failed to start additional AP");
+  }
+}
+
+void loop() {
+  // Your background code here
+}
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   
     // reset settings - wipe stored credentials for testing
     // these are stored by the esp library
@@ -239,16 +367,28 @@ void setup(){
   client.setServer(mqtt_server, 1883);
   client.setCallback(callback);
 
-//  ThingSpeak.begin(client);  // Initialize ThingSpeak
+
+
+  //start Wifi AP, Webserial, OTA-update    
+  // Start ElegantOTA
+  ElegantOTA.begin(&server);    
+  ElegantOTA.onStart(onOTAStart);
+  ElegantOTA.onProgress(onOTAProgress);
+  ElegantOTA.onEnd(onOTAEnd);
+
+  // Start server
+  server.begin();
 }
+
+
+//*******************
+//****   LOOP     ***
+//*******************
 
 void loop() {
 
   RecvJsonData();
 
-  if (!client.connected()) {
-    reconnect();
-  }
   client.loop();
 
   if (updated) {
@@ -267,4 +407,5 @@ void loop() {
     }
     lastTime = millis();
   }
+  ElegantOTA.loop();
 }
