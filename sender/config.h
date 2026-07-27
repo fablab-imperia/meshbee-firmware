@@ -7,7 +7,7 @@
 #define DELAYTIME               250
 #define TIME_TO_SLEEP            60              // default sleep time in minutes
 
-const char* ssid     = "MeshBee";
+const char* ssid     = "MeshBeeT";
 const char* password = "MeshBee123";
 
 #if DEBUG

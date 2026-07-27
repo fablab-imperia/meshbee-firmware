@@ -331,6 +331,29 @@ String nodeID;
     } else if ( d == "test") {                                             // send test data
       WebSerial.println ("send test data to backend");
 
+      JsonDocument SendData;
+      char output[130];
+      SendData["id_nodo"] =     TEST_NODE;         // "id_nodo": TEST_NODE,                  20 characters
+      SendData["id_sensore"] =  "1";               // "id_sensore": "1",                     18 characters                    
+      SendData["temperatura"] = "20.0";            // "temperatura": 20.0,                   20 characters
+      SendData["umidita"] =     "55.0";            // "umidita": 55.0,                       16 characters
+      SendData["peso"] =        "70.0";            // "peso": 70.0,                          13 characters 
+      SendData["receiver"] =    TEST_NODE;         // "receiver": TEST_NODE                  20 characters  
+      SendData["alarm"] =       "0";               // "alarm": "1"                           18 characters  
+      serializeJson(SendData, output);             // add mydata to output send to serial   123 characters
+
+      // send only one of 4 messages with distance of 1 second with node id and id sensors
+      Serial.println(millis() - rec_timer);
+      if (!client.connected()) {
+        reconnect();
+      }
+      char theme[20];
+      // topic beehive/<nodo>/data
+      strcpy (theme, "beehive/");
+      strcat (theme, TEST_NODE);
+      strcat (theme, "/data");
+      client.publish(theme, output);
+    
     } else if ( d == "reset") {                                            // reset
       WebSerial.println ("ESP32 restart in 5 seconds");
       delay(5000);

@@ -221,12 +221,15 @@ float   w;                 // variables for weight (get_units)
 float   h, t;              // variables for humidity and temperature
 uint8_t sensorNo;          // sensor number
 uint8_t s;                 // variable for sensor
+bool    a = false;         // variable for alarm
 
 
 //**********************
 //****     WIFI AP  ****
 //**********************
 
+unsigned long lastClientTime = 0;
+const unsigned long timeout = 5 * 60 * 1000; // 5 Minuten
 
 AsyncWebServer server(80);
 
@@ -315,6 +318,31 @@ void startAP() {
       WebSerial.println ("ESP32 restart in 5 seconds");
       delay(5000);
       ESP.restart();
+    
+    } else if ( d == "test") {                                            // send test data
+      WebSerial.println ("send test data");
+      JsonDocument mydata;                //create json document
+      String output;
+      mydata["sensor"]      = 0;          // load values into "mydata" variable to convert to JSON
+      mydata["humidity"]    = 55.0;
+      mydata["temperature"] = 22.0;
+      mydata["weight"]      = 44.0;
+      mydata["alarm"]       = 0;
+      serializeJson(mydata, output); // add mydata to output send to serial
+
+      for (int j = 0; j < NoTransmission; j++){   // number of transmissions via meshtastic
+        meshSerial.println(output);  // print data to meshtastic
+        delay(1000);
+      }
+      D_print ("sensor 0 message: "); D_print(output); D_println(" sent");       // print json data to serial monitor
+
+
+
+
+
+
+
+
     
     } else if ( d == "example") {                                          // example sensor data
       WebSerial.println ("{\"sensor\":0,\"sensDHT22\": false,\"sensHX711\": false,\"offset\":0,\"factor\":0}");
@@ -448,7 +476,7 @@ void startAP() {
 //**** wakeup reason ****
 //***********************
 
-
+int gpio_wakeup_pin;
 esp_sleep_wakeup_cause_t wakeup_reason;
 
 /*
@@ -460,22 +488,28 @@ void wakeupReason() {
   wakeup_reason = esp_sleep_get_wakeup_cause();
 
   switch (wakeup_reason) {
-    case ESP_SLEEP_WAKEUP_EXT0:     D_println("Wakeup caused by external signal using RTC_IO"); D_println("Switch on Wifi AP");  apMode = true;  /*  meshSerial.println("Wakeup caused by external signal using RTC_IO"); */ break;
-    case ESP_SLEEP_WAKEUP_EXT1:     D_println("Wakeup caused by external signal using RTC_CNTL");        /*  meshSerial.println("Wakeup caused by external signal using RTC_CNTL");  */       break;
+    case ESP_SLEEP_WAKEUP_EXT0:     D_println("Wakeup caused by external signal using RTC_IO (EXT0)");   /*  meshSerial.println("Wakeup caused by external signal using RTC_IO"); */ break;
+    case ESP_SLEEP_WAKEUP_EXT1:     {
+                                      D_println("Wakeup caused by external signal using RTC_CNTL (EXT1)");
+                                      uint64_t wakeup_pin_mask = esp_sleep_get_ext1_wakeup_status();
+                                      gpio_wakeup_pin = __builtin_ffsll(wakeup_pin_mask) - 1;
+                                      Serial.print("GPIO that triggered the wake up: GPIO ");
+                                      Serial.println(gpio_wakeup_pin);
+                                      if (gpio_wakeup_pin == ALARM_GPIO) {
+                                        Serial.println("ALARM!!!");
+                                        a = true;
+                                      } else {
+                                        Serial.println("wake up by reset button");    
+                                        D_println("Switch on Wifi AP");  
+                                        apMode = true;       /*  meshSerial.println("Wakeup caused by external signal using RTC_CNTL");  */ 
+                                      }  
+                                      break;
+                                    }
     case ESP_SLEEP_WAKEUP_TIMER:    D_println("Wakeup caused by timer");                                 /*  meshSerial.println("Wakeup caused by timer");                           */       break;
     case ESP_SLEEP_WAKEUP_TOUCHPAD: D_println("Wakeup caused by touchpad");                              /*  meshSerial.println("Wakeup caused by touchpad");                         */      break;
     case ESP_SLEEP_WAKEUP_ULP:      D_println("Wakeup caused by ULP program");                           /*  meshSerial.println("Wakeup caused by ULP program");                      */      break;
     default:                        D_printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason);/* meshSerial.printf("Wakeup was not caused by deep sleep: %d\n", wakeup_reason); */ break;
   }
-}
-
-/*
-Method to print the GPIO that triggered the wakeup
-*/
-void print_GPIO_wake_up(){
-  int GPIO_reason = esp_sleep_get_ext1_wakeup_status();
-  Serial.print("GPIO that triggered the wake up: GPIO ");
-  Serial.println((log(GPIO_reason))/log(2), 0);
 }
 
 
@@ -569,10 +603,11 @@ void dataPacketCreate(){
 
       String output;
 
-      mydata["sensor"] = i;          // load values into "mydata" variable to convert to JSON
-      mydata["humidity"] = h;
+      mydata["sensor"]      = i;          // load values into "mydata" variable to convert to JSON
+      mydata["humidity"]    = h;
       mydata["temperature"] = t;
-      mydata["weight"] = w;
+      mydata["weight"]      = w;
+      mydata["alarm"]       = a;
       serializeJson(mydata, output); // add mydata to output send to serial
 
       for (int j = 0; j < NoTransmission; j++){   // number of transmissions via meshtastic
@@ -606,7 +641,7 @@ void setup() {
 
   // wakeup reason for ESP32
   wakeupReason();
-
+  
   // get all values out of non volatile storage
   preferences.begin("SensorData", false);
 
@@ -648,42 +683,16 @@ void setup() {
   
   preferences.end();
 
+  // Meshtastic communication
+  // Start Serial 2 with the defined RX and TX pins and a baud rate of 115200
+  meshSerial.begin(MESH_BAUD, SERIAL_8N1, RXD2, TXD2);
+  D_println("Serial 2 'meshSerial' started at 115200 baud rate");
+
   if (!apMode) {
     disableWiFi();
     setCPUfreq(40);                    // slow down the ESP32 processor if not in APmode
 
-
-    
-    
-    
-/*    
-   If wake-up GPIO == alarm_gpio then send alarm message but still send values. So, you can see which sensor is missing
-   print_GPIO_wake_up();
-
- 
- 
-   https://randomnerdtutorials.com/esp32-external-wake-up-deep-sleep/
-   Achtung EXT1 !!!
-   
- 
- */
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     YSelect(1);                        // sensor 1 weight
-
-    // Meshtastic communication
-    // Start Serial 2 with the defined RX and TX pins and a baud rate of 115200
-    meshSerial.begin(MESH_BAUD, SERIAL_8N1, RXD2, TXD2);
-    D_println("Serial 2 'meshSerial' started at 115200 baud rate");
-
 
     // Start the DHT22 sensor
     dht.begin();
@@ -724,9 +733,12 @@ void setup() {
 
 
   // external wake up by bitmask = WAKEUP_GPIO and ALARM_GPIO
-  esp_sleep_enable_ext0_wakeup((gpio_num_t)bitmask, 1);  //1 = High, 0 = Low
+  esp_sleep_enable_ext1_wakeup_io(bitmask, ESP_EXT1_WAKEUP_ANY_HIGH);  //
 
   delay(DELAYTIME);   //for stabilisation of DHT22 before taking values
+
+  lastClientTime = millis();    // for reset after timeout of unused AP
+
 }
 
 
@@ -736,7 +748,22 @@ void setup() {
 
 
 void loop() {
-  if (pressed) {
+
+  int clients = WiFi.softAPgetStationNum();
+
+  if (clients > 0) {
+    // minimum one client connected
+    lastClientTime = millis();
+  }
+
+  if (millis() - lastClientTime > timeout) {
+    Serial.println("Since 5 minutes no client connected. Reset...");
+    delay(100);
+    ESP.restart();
+  }
+
+
+if (pressed) {
     D_println("Button pressed ");
     pressed = false;
     delay(200);
