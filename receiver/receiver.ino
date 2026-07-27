@@ -17,6 +17,8 @@ WiFiClient  espClient;
 AsyncWebServer server(80);
 
 Preferences prefs;                // to save the node ID
+String nodeID;
+
 JsonDocument JSONdata;            //create json document
 
 //**************************
@@ -248,7 +250,7 @@ void RecvJsonData(){
       SendData["temperatura"] = tempString;      // "temperatura": 20.0,                   20 characters
       SendData["umidita"] =     humString;       // "umidita": 55.0,                       16 characters
       SendData["peso"] =        weighString;     // "peso": 70.0,                          13 characters 
-      SendData["receiver"] =    RECEIVER_NODE;   // "receiver": "E332"                     20 characters  
+      SendData["receiver"] =    nodeID;          // "receiver": "E332"                     20 characters  
       SendData["alarm"] =       alarmString;     // "alarm": "1"                           18 characters  
       serializeJson(SendData, output);           // add mydata to output send to serial   123 characters
 
@@ -278,8 +280,6 @@ void RecvJsonData(){
 //*******************
 
 void setup(){
-
-String nodeID;
 
   // Serial Monitor
   Serial.begin(115200);
@@ -341,6 +341,7 @@ String nodeID;
       SendData["receiver"] =    TEST_NODE;         // "receiver": TEST_NODE                  20 characters  
       SendData["alarm"] =       "0";               // "alarm": "1"                           18 characters  
       serializeJson(SendData, output);             // add mydata to output send to serial   123 characters
+      WebSerial.println(output);
 
       // send only one of 4 messages with distance of 1 second with node id and id sensors
       Serial.println(millis() - rec_timer);
@@ -352,12 +353,23 @@ String nodeID;
       strcpy (theme, "beehive/");
       strcat (theme, TEST_NODE);
       strcat (theme, "/data");
+      WebSerial.print("theme: ");
+      WebSerial.println(theme);
       client.publish(theme, output);
     
     } else if ( d == "reset") {                                            // reset
       WebSerial.println ("ESP32 restart in 5 seconds");
       delay(5000);
       ESP.restart();
+
+    } else if ( d == "help") {                                            // help
+      WebSerial.println ("command list:");
+      WebSerial.println ("- list");
+      WebSerial.println ("- test");
+      WebSerial.println ("- reset");
+      WebSerial.println ("- erase");
+      WebSerial.println ("- ver");
+      WebSerial.println ("- example");
 
     } else if ( d == "erase") {                                            // erase all permanent data
       Serial.println ("erase all permanent stored data, also wifi access");

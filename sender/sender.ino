@@ -14,9 +14,6 @@
 #include <WiFi.h>
 #include "esp_wifi.h"
 
-//#include "esp_sleep.h"   // ????????????????????????????????????? wofür brauche ich die ?
-// https://github.com/pycom/pycom-esp-idf/blob/master/components/esp32/include/esp_sleep.h
-
 // for non volatile storage
 #include <Preferences.h>
 #include <nvs_flash.h>              // non volatile storage library
@@ -306,6 +303,18 @@ void startAP() {
         }  
       }    
   
+    } else if ( d == "help") {                                            // help
+      WebSerial.println ("command list:");
+      WebSerial.println ("- list");
+      WebSerial.println ("- ver");
+      WebSerial.println ("- sleep");
+      WebSerial.println ("- reset");
+      WebSerial.println ("- test");
+      WebSerial.println ("- example");
+      WebSerial.println ("- exsleep");
+      WebSerial.println ("- erase");
+      WebSerial.println ("- store");
+
     } else if ( d == "ver") {                                              // shows software version
       WebSerial.print ("software version: ");
       WebSerial.println (SoftwareVersion);
@@ -574,6 +583,7 @@ boolean getDHT22data ( int i ){
 
 
 void dataPacketCreate(){
+
   JsonDocument mydata;                         //create json document
   for (int i = 0 ; i < NoSensors ; i++){       // loop for the number of sensors
     D_println();

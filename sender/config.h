@@ -2,7 +2,7 @@
 
 #define NoSensors                 8              // number of sensors - max 8
 #define NoTransmission            4              // number of transmission via meshtastic
-#define SoftwareVersion "10-06-2026"
+#define SoftwareVersion "27-07-2026"
 
 #define DELAYTIME               250
 #define TIME_TO_SLEEP            60              // default sleep time in minutes
