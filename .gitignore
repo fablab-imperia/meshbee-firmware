@@ -24,3 +24,4 @@ marimo/_lsp/
 __marimo__/
 
 /receiver/credentials.h
+/sender/build
