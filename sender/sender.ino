@@ -354,7 +354,7 @@ void startAP() {
 
     
     } else if ( d == "example") {                                          // example sensor data
-      WebSerial.println ("{\"sensor\":0,\"sensDHT22\": false,\"sensHX711\": false,\"offset\":0,\"factor\":0}");
+      WebSerial.println ("{\"sensor\":0,\"sensDHT22\": true,\"sensHX711\": true,\"offset\":0,\"factor\":1}");
 
     } else if ( d == "exsleep") {                                           // example sleep time
       WebSerial.println ("{\"sleep_time\":60}");
@@ -540,8 +540,8 @@ boolean getHX711data(int i){
     scale.set_median_mode();
     delay(DELAYTIME);
      
-  if (scale.is_ready()) {            // check if data pin == LOW - for disabling set data pin = HIGH
-    w = 2 * scale.get_units(20);     // taking the weight twice
+  if (scale.is_ready()) {                    // check if data pin == LOW - for disabling set data pin = HIGH
+    w = scale.get_units(20);                 // NOT taking the weight twice, this is already done by calibration
     D_print("Il peso è "); D_print(w); D_print(" kg"); D_println();  
   } else {
     D_print ("sensor "); D_print (i); D_print (" HX711 not found"); D_println();
