@@ -6,6 +6,7 @@
 #define BUTTON_PIN_BITMASK(GPIO) (1ULL << GPIO)  // 2 ^ GPIO_NUMBER in hex
 #define WAKEUP_GPIO              GPIO_NUM_33     // Only RTC IO are allowed - ESP32 Pin example
 #define ALARM_GPIO               GPIO_NUM_32     // ESP32 GPIO: 0, 2, 4, 12-15, 25-27, 32-39;
+#define CPU_FREQ                 40              // CPU frequency in measurement mode
 
 #include <Arduino.h>
 #include "ArduinoJson.h"
@@ -50,7 +51,12 @@ void ARDUINO_ISR_ATTR buttonISR() {
 //*************************
 //****   cpu frequency  ***
 //*************************
-
+/*
+Valid FrequenciesUniversal values (all crystal types): 240 MHz, 160 MHz, 80 MHz
+40 MHz crystal values: 40 MHz, 20 MHz, 10 MHz
+26 MHz crystal values: 26 MHz, 13 MHz
+24 MHz crystal values: 24 MHz, 12 MHz 
+ */
 void setCPUfreq( int freq ) {                // 40 or 240 MHz
   setCpuFrequencyMhz(freq);
   D_print("set cpu frequency to: ");
@@ -700,7 +706,7 @@ void setup() {
 
   if (!apMode) {
     disableWiFi();
-    setCPUfreq(40);                    // slow down the ESP32 processor if not in APmode
+    setCPUfreq(CPU_FREQ);              // slow down the ESP32 processor if not in APmode
 
     YSelect(1);                        // sensor 1 weight
 

@@ -1,0 +1,3 @@
+linee 193 e 210:
+aggiunto: delay(100);
+cancellato: yield();
